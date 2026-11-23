@@ -302,5 +302,19 @@ int main() {
     assert(approximately_equal(calibrated_target.room_pose.position.x, -0.12F));
     assert(approximately_equal(calibrated_target.room_pose.position.y, 0.91F));
     assert(approximately_equal(calibrated_target.room_pose.position.z, -0.83F));
+
+    // A physical wrist roll must survive the complete weapon-pose transform.
+    a3vr::AbsoluteWeaponPoseSolver roll_solver;
+    absolute_controller.orientation = {
+        0.0F, 0.0F, std::sin(quarter_turn), std::cos(quarter_turn)};
+    const auto rolled_target = roll_solver.solve(
+        absolute_controller, absolute_head);
+    assert(rolled_target.valid);
+    const auto rolled_up = a3vr::rotate(
+        rolled_target.room_pose.orientation, {0.0F, 1.0F, 0.0F});
+    assert(approximately_equal(rolled_up.x, -1.0F));
+    assert(approximately_equal(rolled_up.y, 0.0F));
+    assert(approximately_equal(rolled_up.z, 0.0F));
+
     return 0;
 }
