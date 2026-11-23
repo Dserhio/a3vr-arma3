@@ -303,6 +303,10 @@ bool OpenXrTracker::initialize() {
         has_extension(XR_HTC_VIVE_COSMOS_CONTROLLER_INTERACTION_EXTENSION_NAME);
     supports_vive_focus3_controller_ =
         has_extension(XR_HTC_VIVE_FOCUS3_CONTROLLER_INTERACTION_EXTENSION_NAME);
+    // Steam Frame publishes its own OpenXR interaction profile. Keep this
+    // optional so the same binary remains compatible with other runtimes.
+    supports_valve_frame_controller_ =
+        has_extension("XR_VALVE_frame_controller_interaction");
 
     std::vector<const char*> enabled_extensions{XR_KHR_D3D11_ENABLE_EXTENSION_NAME};
     if (supports_pico_controller_) {
@@ -316,6 +320,9 @@ bool OpenXrTracker::initialize() {
     }
     if (supports_vive_focus3_controller_) {
         enabled_extensions.push_back(XR_HTC_VIVE_FOCUS3_CONTROLLER_INTERACTION_EXTENSION_NAME);
+    }
+    if (supports_valve_frame_controller_) {
+        enabled_extensions.push_back("XR_VALVE_frame_controller_interaction");
     }
     set_status("initializing: create instance");
     XrInstanceCreateInfo instance_info{XR_TYPE_INSTANCE_CREATE_INFO};
@@ -613,6 +620,36 @@ bool OpenXrTracker::create_actions() {
         {haptic_action_, "/user/hand/left/output/haptic"},
         {haptic_action_, "/user/hand/right/output/haptic"},
     });
+    // Steam Frame has a dedicated profile. Without requesting its extension,
+    // SteamVR may expose the controllers only through compatibility emulation.
+    // The generic pose paths still provide 6DoF aim and grip poses.
+    if (supports_valve_frame_controller_) {
+        suggest_profile("/interaction_profiles/valve/frame_controller_valve", {
+            {hand_pose_action_, "/user/hand/left/input/aim/pose"},
+            {grip_pose_action_, "/user/hand/left/input/grip/pose"},
+            {hand_pose_action_, "/user/hand/right/input/aim/pose"},
+            {grip_pose_action_, "/user/hand/right/input/grip/pose"},
+            {fire_action_, "/user/hand/right/input/trigger/value"},
+            {aim_action_, "/user/hand/right/input/squeeze/value"},
+            {left_trigger_action_, "/user/hand/left/input/trigger/value"},
+            {left_squeeze_action_, "/user/hand/left/input/squeeze/value"},
+            {move_action_, "/user/hand/left/input/thumbstick"},
+            {move_x_action_, "/user/hand/left/input/thumbstick/x"},
+            {move_y_action_, "/user/hand/left/input/thumbstick/y"},
+            {right_move_action_, "/user/hand/right/input/thumbstick"},
+            {right_move_x_action_, "/user/hand/right/input/thumbstick/x"},
+            {right_move_y_action_, "/user/hand/right/input/thumbstick/y"},
+            {sprint_action_, "/user/hand/left/input/thumbstick/click"},
+            {reload_action_, "/user/hand/right/input/a/click"},
+            {fire_mode_action_, "/user/hand/right/input/x/click"},
+            {swap_weapon_action_, "/user/hand/left/input/dpad_down/click"},
+            {vault_action_, "/user/hand/right/input/b/click"},
+            {interact_action_, "/user/hand/left/input/view/click"},
+            {haptic_action_, "/user/hand/left/output/haptic"},
+            {haptic_action_, "/user/hand/right/output/haptic"},
+        });
+    }
+
     suggest_profile("/interaction_profiles/microsoft/motion_controller", {
         {hand_pose_action_, "/user/hand/left/input/aim/pose"},
         {grip_pose_action_, "/user/hand/left/input/grip/pose"},
