@@ -468,8 +468,10 @@ bool OpenXrTracker::create_actions() {
         info.subactionPaths = subactions;
         return xr_ok(xrCreateAction(action_set_, &info, &action));
     };
-    if (!create_action(XR_ACTION_TYPE_POSE_INPUT, "hand_pose", "Hand pose",
+    if (!create_action(XR_ACTION_TYPE_POSE_INPUT, "hand_pose", "Hand aim pose",
                        hand_paths_.data(), 2, hand_pose_action_) ||
+        !create_action(XR_ACTION_TYPE_POSE_INPUT, "grip_pose", "Hand grip pose",
+                       hand_paths_.data(), 2, grip_pose_action_) ||
         !create_action(XR_ACTION_TYPE_FLOAT_INPUT, "fire", "Fire",
                        &hand_paths_[1], 1, fire_action_) ||
         !create_action(XR_ACTION_TYPE_FLOAT_INPUT, "aim", "Aim down sights",
@@ -541,7 +543,9 @@ bool OpenXrTracker::create_actions() {
     });
     suggest_profile("/interaction_profiles/oculus/touch_controller", {
         {hand_pose_action_, "/user/hand/left/input/aim/pose"},
+        {grip_pose_action_, "/user/hand/left/input/grip/pose"},
         {hand_pose_action_, "/user/hand/right/input/aim/pose"},
+        {grip_pose_action_, "/user/hand/right/input/grip/pose"},
         {fire_action_, "/user/hand/right/input/trigger/value"},
         {aim_action_, "/user/hand/right/input/squeeze"},
         {left_trigger_action_, "/user/hand/left/input/trigger/value"},
@@ -564,7 +568,9 @@ bool OpenXrTracker::create_actions() {
     });
     suggest_profile("/interaction_profiles/valve/index_controller", {
         {hand_pose_action_, "/user/hand/left/input/aim/pose"},
+        {grip_pose_action_, "/user/hand/left/input/grip/pose"},
         {hand_pose_action_, "/user/hand/right/input/aim/pose"},
+        {grip_pose_action_, "/user/hand/right/input/grip/pose"},
         {fire_action_, "/user/hand/right/input/trigger/value"},
         {aim_action_, "/user/hand/right/input/squeeze"},
         {left_trigger_action_, "/user/hand/left/input/trigger/value"},
@@ -587,7 +593,9 @@ bool OpenXrTracker::create_actions() {
     });
     suggest_profile("/interaction_profiles/htc/vive_controller", {
         {hand_pose_action_, "/user/hand/left/input/aim/pose"},
+        {grip_pose_action_, "/user/hand/left/input/grip/pose"},
         {hand_pose_action_, "/user/hand/right/input/aim/pose"},
+        {grip_pose_action_, "/user/hand/right/input/grip/pose"},
         {fire_action_, "/user/hand/right/input/trigger/value"},
         {aim_action_, "/user/hand/right/input/squeeze"},
         {left_trigger_action_, "/user/hand/left/input/trigger/value"},
@@ -607,7 +615,9 @@ bool OpenXrTracker::create_actions() {
     });
     suggest_profile("/interaction_profiles/microsoft/motion_controller", {
         {hand_pose_action_, "/user/hand/left/input/aim/pose"},
+        {grip_pose_action_, "/user/hand/left/input/grip/pose"},
         {hand_pose_action_, "/user/hand/right/input/aim/pose"},
+        {grip_pose_action_, "/user/hand/right/input/grip/pose"},
         {fire_action_, "/user/hand/right/input/trigger/value"},
         {aim_action_, "/user/hand/right/input/squeeze"},
         {left_trigger_action_, "/user/hand/left/input/trigger/value"},
@@ -629,7 +639,9 @@ bool OpenXrTracker::create_actions() {
     auto suggest_touch_style_profile = [&](const char* profile_name) {
         suggest_profile(profile_name, {
             {hand_pose_action_, "/user/hand/left/input/aim/pose"},
+        {grip_pose_action_, "/user/hand/left/input/grip/pose"},
             {hand_pose_action_, "/user/hand/right/input/aim/pose"},
+        {grip_pose_action_, "/user/hand/right/input/grip/pose"},
             {fire_action_, "/user/hand/right/input/trigger/value"},
             {aim_action_, "/user/hand/right/input/squeeze"},
             {left_trigger_action_, "/user/hand/left/input/trigger/value"},
@@ -656,7 +668,9 @@ bool OpenXrTracker::create_actions() {
         suggest_touch_style_profile("/interaction_profiles/bytedance/pico4_controller");
         suggest_profile("/interaction_profiles/bytedance/pico_g3_controller", {
             {hand_pose_action_, "/user/hand/left/input/aim/pose"},
+        {grip_pose_action_, "/user/hand/left/input/grip/pose"},
             {hand_pose_action_, "/user/hand/right/input/aim/pose"},
+        {grip_pose_action_, "/user/hand/right/input/grip/pose"},
             {fire_action_, "/user/hand/right/input/trigger/value"},
             {left_trigger_action_, "/user/hand/left/input/trigger/value"},
             {move_action_, "/user/hand/left/input/thumbstick"},
@@ -688,6 +702,17 @@ bool OpenXrTracker::create_actions() {
         action_space_info.poseInActionSpace.orientation.w = 1.0F;
         if (!xr_ok(xrCreateActionSpace(session_, &action_space_info, &hand_spaces_[index]))) {
             set_error("cannot create hand action space");
+            return false;
+        }
+    }
+
+    for (std::size_t index = 0; index < grip_spaces_.size(); ++index) {
+        XrActionSpaceCreateInfo action_space_info{XR_TYPE_ACTION_SPACE_CREATE_INFO};
+        action_space_info.action = grip_pose_action_;
+        action_space_info.subactionPath = hand_paths_[index];
+        action_space_info.poseInActionSpace.orientation.w = 1.0F;
+        if (!xr_ok(xrCreateActionSpace(session_, &action_space_info, &grip_spaces_[index]))) {
+            set_error("cannot create grip action space");
             return false;
         }
     }
@@ -922,6 +947,22 @@ void OpenXrTracker::run_frame() {
             }
         }
 
+        // The grip pose follows the physical handle/palm orientation, including
+        // wrist roll. Keep aim pose separate for native aiming and UI pointers.
+        for (std::size_t index = 0; index < grip_spaces_.size(); ++index) {
+            XrActionStateGetInfo state_info{XR_TYPE_ACTION_STATE_GET_INFO};
+            state_info.action = grip_pose_action_;
+            state_info.subactionPath = hand_paths_[index];
+            XrActionStatePose state{XR_TYPE_ACTION_STATE_POSE};
+            if (xr_ok(xrGetActionStatePose(session_, &state_info, &state)) && state.isActive) {
+                XrSpaceLocation location{XR_TYPE_SPACE_LOCATION};
+                if (xr_ok(xrLocateSpace(grip_spaces_[index], local_space_,
+                        frame_state.predictedDisplayTime, &location))) {
+                    if (index == 1) next.right_grip = convert_pose(location);
+                }
+            }
+        }
+
         auto read_boolean = [&](const XrAction action, const XrPath hand) {
             XrActionStateGetInfo info{XR_TYPE_ACTION_STATE_GET_INFO};
             info.action = action;
@@ -1031,7 +1072,10 @@ void OpenXrTracker::run_frame() {
         (controller_input.radial_menu ? 512U : 0U) |
         (roomscale_crouched_ ? kRoomscaleCrouchButton : 0U);
     next.motion_aim_mode = motion_aim_mode_;
-    next.weapon_target = weapon_pose_solver_.solve(next.right_hand, next.head);
+    const TrackedPose& weapon_hand =
+        next.right_grip.position_valid && next.right_grip.orientation_valid
+            ? next.right_grip : next.right_hand;
+    next.weapon_target = weapon_pose_solver_.solve(weapon_hand, next.head);
     AimFeedback aim_feedback{};
     (void)render_state_.read_aim_feedback(aim_feedback);
     const bool absolute_servo =
@@ -1276,10 +1320,14 @@ void OpenXrTracker::shutdown() {
         if (space != XR_NULL_HANDLE) xrDestroySpace(space);
         space = XR_NULL_HANDLE;
     }
+    for (auto& space : grip_spaces_) {
+        if (space != XR_NULL_HANDLE) xrDestroySpace(space);
+        space = XR_NULL_HANDLE;
+    }
     if (view_space_ != XR_NULL_HANDLE) xrDestroySpace(view_space_);
     if (local_space_ != XR_NULL_HANDLE) xrDestroySpace(local_space_);
     const std::array actions{
-        hand_pose_action_, fire_action_, aim_action_, left_trigger_action_,
+        hand_pose_action_, grip_pose_action_, fire_action_, aim_action_, left_trigger_action_,
         left_squeeze_action_, left_thumb_touch_action_, move_action_, move_x_action_,
         move_y_action_, right_move_action_, right_move_x_action_,
         right_move_y_action_, sprint_action_,
@@ -1299,7 +1347,7 @@ void OpenXrTracker::shutdown() {
     supports_vive_cosmos_controller_ = false;
     supports_vive_focus3_controller_ = false;
     view_space_ = local_space_ = XR_NULL_HANDLE;
-    hand_pose_action_ = fire_action_ = aim_action_ = left_trigger_action_ =
+    hand_pose_action_ = grip_pose_action_ = fire_action_ = aim_action_ = left_trigger_action_ =
         left_squeeze_action_ = left_thumb_touch_action_ = move_action_ = XR_NULL_HANDLE;
     move_x_action_ = move_y_action_ = XR_NULL_HANDLE;
     right_move_action_ = right_move_x_action_ = right_move_y_action_ = XR_NULL_HANDLE;
