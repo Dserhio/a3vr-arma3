@@ -76,6 +76,8 @@ struct TrackingSnapshot {
     TrackedPose head{};
     TrackedPose left_hand{};
     TrackedPose right_hand{};
+    // Physical controller grip pose; aim pose remains separate for UI/native aiming.
+    TrackedPose right_grip{};
     std::array<EyeView, 2> eyes{};
     std::array<float, 5> left_finger_curls{};
     float controller_move_x{};
