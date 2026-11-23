@@ -80,6 +80,7 @@ private:
 
     XrActionSet action_set_{XR_NULL_HANDLE};
     XrAction hand_pose_action_{XR_NULL_HANDLE};
+    XrAction grip_pose_action_{XR_NULL_HANDLE};
     XrAction fire_action_{XR_NULL_HANDLE};
     XrAction aim_action_{XR_NULL_HANDLE};
     XrAction left_trigger_action_{XR_NULL_HANDLE};
@@ -100,6 +101,7 @@ private:
     XrAction haptic_action_{XR_NULL_HANDLE};
     std::array<XrPath, 2> hand_paths_{};
     std::array<XrSpace, 2> hand_spaces_{XR_NULL_HANDLE, XR_NULL_HANDLE};
+    std::array<XrSpace, 2> grip_spaces_{XR_NULL_HANDLE, XR_NULL_HANDLE};
 
     Microsoft::WRL::ComPtr<ID3D11Device> d3d_device_{};
     Microsoft::WRL::ComPtr<ID3D11DeviceContext> d3d_context_{};
