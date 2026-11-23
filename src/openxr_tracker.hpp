@@ -62,6 +62,7 @@ private:
     bool supports_pico_ultra_controller_{false};
     bool supports_vive_cosmos_controller_{false};
     bool supports_vive_focus3_controller_{false};
+    bool supports_valve_frame_controller_{false};
 
     XrInstance instance_{XR_NULL_HANDLE};
     XrSystemId system_id_{XR_NULL_SYSTEM_ID};
