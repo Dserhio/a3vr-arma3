@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   windows:
-    name: Compile and test on Windows
+    name: Compile, test, and package installable mod
     runs-on: windows-2022
     timeout-minutes: 45
     steps:
@@ -27,8 +27,36 @@ jobs:
       - name: Run tests
         run: ctest --test-dir build-current -C Release --output-on-failure
 
-      - name: Upload compiled binaries and addon files
-        if: success()
+      - name: Checkout pinned PBO packer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: 4d4a5852/a3lib.py
+          ref: 0d89b71a0b8453aba02ffd43edb6a6ee4e78b335
+          path: .ci/a3lib
+
+      - name: Package installable development mod
+        shell: pwsh
+        run: |
+          $arguments = @{
+            Configuration = 'Release'
+            BuildDirectory = 'build-current'
+            A3LibScript = '.ci/a3lib/a3lib.py'
+            OutputDirectory = 'release'
+            PrereleaseLabel = 'dev-${{ github.run_number }}'
+          }
+          & ./scripts/package-release.ps1 @arguments
+
+      - name: Upload installable mod
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: A3VR-installable-dev-${{ github.run_number }}
+          path: |
+            release/*.zip
+            release/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload compiled binaries and addon source
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: A3VR-cloud-build-${{ github.sha }}
